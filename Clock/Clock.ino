@@ -1,5 +1,5 @@
-// Binary clock code with 2.8" TFT capacitive touch display 
-// Ardino shield from Adafruit.
+// Traditional face clock code with 2.8" TFT capacitive touch 
+// display Ardino shield from Adafruit.
 //
 // Version history
 // 2014-11-22 V1.0 Written
@@ -12,6 +12,7 @@
 #include "Adafruit_ILI9341.h"
 #include "Wire.h"
 #include "Adafruit_FT6206.h"
+#include "position.h"
 
 // Display constants
 #define TFT_DC 9
@@ -26,22 +27,26 @@
 #define GRAY 0x38E7
 
 // Positioning constants
-#define START_X 220
-#define START_Y 300
-#define HEIGHT 30
+#define X_BL = 20
+#define Y_BL = 100
+#define X_TR = 220
+#define Y_TR = 300
+
 #define WIDTH 30
 #define HEIGHT_SPACING 80
 #define WIDTH_SPACING 40
-#define RADIUS 5
+#define HR_RADIUS 50
+#define MIN_RADIUS 75
+#define SEC_RADIUS 100
+#define HR_THICKNESS 5
+#define MIN_THICKNESS 3
+#define SEC_THICKNESS 1
+
 #define Y_SET 25
 #define X_SET_HOUR 205
 #define X_SET_MINUTE 125
 #define SET_RADIUS 15
-
-// Light status constants
-#define ON 1
-#define OFF 0
-#define NA -1
+#define PI 3.14156
 
 // Time constants
 #define HOUR 0
@@ -60,13 +65,8 @@ int currentSecond = 0;
 
 // Default colors hr, min, sec
 int colors[] = {RED, GREEN, YELLOW};
-
-// current light status (ON, OFF, or NA-not initialized)
-int lights[3][6] = {
-  {NA, NA, NA, NA, NA, NA},
-  {NA, NA, NA, NA, NA, NA},
-  {NA, NA, NA, NA, NA, NA},  
-};
+int handRadius[] = {HR_RADIUS, MIN_RADIUS, SEC_RADIUS};
+int handThick[] = {HR_THICKNESS, MIN_THICKNESS, SEC_THICKNESS};
 
 // From the library documentation
 // The FT6206 uses hardware I2C (SCL/SDA)
@@ -77,6 +77,7 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 //Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
 
 void setup() {
+  Serial.begin(9600);
   ctp.begin(TOUCH_SENSITIVITY);
   tft.begin();
   // Clear display and draw the set time buttons
@@ -90,6 +91,11 @@ void setup() {
 void loop() {
   // If the time has changed, then we want to repaint the clock
   if (checkTime()) {
+//    Serial.print(currentHour);
+//    Serial.print(":");
+//    Serial.print(currentMinute);
+//    Serial.print(":");
+//    Serial.println(currentSecond);
     paintClock(currentHour, currentMinute, currentSecond);
   }
   if (ctp.touched()) {
@@ -137,44 +143,37 @@ void updateClock() {
 
 // Paint the clock time
 void paintClock(int hour, int minute, int second) {
-  paintHand(HOUR, hour);
-  paintHand(MINUTE, minute);
+  tft.fillRect(20, 100, 200, 200, BLACK);
   paintHand(SECOND, second);
+  paintHand(MINUTE, minute);
+  paintHand(HOUR, hour);
 }
 
 // Paint the hours, minutes, or seconds
 void paintHand(int unit, int val) {
-  for (int i=0; i<=5; i++) {
-    paintPlaceValue(unit, i, val);
-  }  
+  Position p = computeXY(unit, val, handRadius[unit], handThick[unit]);
+  tft.drawLine(p.x1, p.y1, p.x2, p.y2, colors[unit]); 
 }
 
-// Paint one of the lights
-// unit:   MINUTE, HOUR, or SECOND
-// place:  0..5 (standing for 1s, 2s, 4s, ... 32s
-// val:    The number to display - use bitmask to see if on or off
-void paintPlaceValue(int unit, int place, int val) {
-  // Skip 32s place for hour only
-  if (!(unit == HOUR && place == 5)) {    
-    // Get position of light
-    int y = START_Y - (place * WIDTH_SPACING) - WIDTH;
-    int x = START_X - (unit * HEIGHT_SPACING) - HEIGHT;
-    // Compute the mask. The .5 is added to get correct integer
-    // when it's cast to an integer
-    int mask = pow(2, place)+.5;
-    if (val & mask) {
-      // Light should be on. Repaint only if it's off right now
-      if (lights[unit][place] != ON) {
-        tft.fillRoundRect(x, y, WIDTH, HEIGHT, RADIUS, colors[unit]);
-        lights[unit][place] = ON;
-      }
-    } else {
-      // Light should be off. Repaint only if it's on right now
-      if (lights[unit][place] != OFF) {      
-        tft.fillRoundRect(x, y, WIDTH, HEIGHT, RADIUS, BLACK);
-        tft.drawRoundRect(x, y, WIDTH, HEIGHT, RADIUS, colors[unit]);
-        lights[unit][place] = OFF;
-      }
-    }
+// Compute x,y coordinates of hand
+Position computeXY(int unit, int val, int radius, int width) {
+  Position p;
+  int conv;
+  int cVal = val;
+  if (unit == HOUR) {
+    val = val % 12;
+    conv = 6;
+  } else {
+    conv = 30;
   }
+  Serial.print(val);
+  double angle = PI / conv * val;
+  int x = radius * cos(angle);
+  int y = radius * sin(angle);
+  p.x1 = 120;
+  p.y1 = 200;
+  p.x2 = map(x, -100, 100, 20, 220);
+  p.y2 = map(y, -100, 100, 100, 300);
+  return p;
 }
+
